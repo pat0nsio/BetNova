@@ -1,12 +1,12 @@
 # app.py
 from playwright.sync_api import sync_playwright
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify
 
 app = Flask(__name__)
 
 
 @app.route('/')
-def helloWorld():  # <--- Cambiado
+def helloWorld():
     return 'hola causas'
 
 
@@ -52,6 +52,8 @@ def scrapeData():
                     equipoVisitanteEl = partido.query_selector(
                         'div[class*="team_right"]')
 
+                    timeEl = partido.query_selector('div[class*="time_block"]')
+
 
                     scoresElements = partido.query_selector_all(
                         'span[class^="scores_scoreseventresult"]')
@@ -69,6 +71,7 @@ def scrapeData():
                         "visitante": equipoVisitanteEl.text_content().strip() if equipoVisitanteEl else 'N/A',
                         "golesLocal": golesLocal,
                         "golesVisitante": golesVisitante,
+                        "tiempo": timeEl.text_content().strip() if timeEl else 'N/A',
                     })
 
             browser.close()
