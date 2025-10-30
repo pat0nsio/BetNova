@@ -18,7 +18,6 @@ def obtener_o_crear_id_equipo(cursor, nombre_equipo, pais_default="N/A"):
             sql_insert = "INSERT INTO Equipo (Nombre, País, PartidosGanados, PartidosPerdidos) VALUES (?, ?, 0, 0)"
             try: cursor.execute(sql_insert, (nombre_equipo, pais_default))
             except pyodbc.Error as insert_err:
-                # Simplified error message
                 print(f"Error insertando equipo '{nombre_equipo}': {insert_err}")
                 cursor.execute(sql_select, nombre_equipo); row_check = cursor.fetchone()
                 if row_check: return row_check[0]
@@ -32,7 +31,6 @@ def obtener_o_crear_id_equipo(cursor, nombre_equipo, pais_default="N/A"):
                  if row_check: return row_check[0]
                  return None
     except Exception as e:
-        # Simplified error message
         print(f"Error procesando equipo '{nombre_equipo}': {e}"); return None
 
 def obtener_o_crear_competicion_id(cursor, nombre_competicion, id_deporte_default=DEFAULT_DEPORTE_ID):
@@ -44,11 +42,10 @@ def obtener_o_crear_competicion_id(cursor, nombre_competicion, id_deporte_defaul
         row = cursor.fetchone()
         if row: return row[0]
         else:
-            print(f"Creando competición: '{nombre_competicion}'...") # Simplified message
+            print(f"Creando competición: '{nombre_competicion}'...")
             sql_insert = "INSERT INTO Competicion (Nombre, Deporte_ID) VALUES (?, ?)"
             try: cursor.execute(sql_insert, (nombre_competicion, id_deporte_default))
             except pyodbc.Error as insert_err:
-                 # Simplified error message
                  print(f"Error insertando competición '{nombre_competicion}': {insert_err}")
                  cursor.execute(sql_select, nombre_competicion); row_check = cursor.fetchone()
                  if row_check: return row_check[0]
@@ -62,7 +59,6 @@ def obtener_o_crear_competicion_id(cursor, nombre_competicion, id_deporte_defaul
                  if row_check: return row_check[0]
                  return None
     except Exception as e:
-        # Simplified error message
         print(f"Error procesando competición '{nombre_competicion}': {e}"); return None
 
 
@@ -75,11 +71,10 @@ def obtener_o_crear_id_estadio(cursor, nombre_estadio, ciudad_default="N/A", pai
         row = cursor.fetchone()
         if row: return row[0]
         else:
-            print(f"Creando estadio: '{nombre_estadio}'...") # Simplified message
+            print(f"Creando estadio: '{nombre_estadio}'...")
             sql_insert = "INSERT INTO Estadio (Nombre, Ciudad, País) VALUES (?, ?, ?)"
             try: cursor.execute(sql_insert, (nombre_estadio, ciudad_default, pais_default))
             except pyodbc.Error as insert_err:
-                 # Simplified error message
                  print(f"Error insertando estadio '{nombre_estadio}': {insert_err}. Usando ID default.")
                  cursor.execute(sql_select, nombre_estadio); row_check = cursor.fetchone()
                  if row_check: return row_check[0]
@@ -93,7 +88,6 @@ def obtener_o_crear_id_estadio(cursor, nombre_estadio, ciudad_default="N/A", pai
                  if row_check: return row_check[0]
                  return DEFAULT_STADIUM_ID
     except Exception as e:
-        # Simplified error message
         print(f"Error procesando estadio '{nombre_estadio}': {e}. Usando ID default."); return DEFAULT_STADIUM_ID
 
 def agregar_equipo_a_competicion_si_no_existe(cursor, equipo_id, competicion_id):
@@ -106,28 +100,26 @@ def agregar_equipo_a_competicion_si_no_existe(cursor, equipo_id, competicion_id)
             sql_insert = "INSERT INTO EquipoEnComp (Equipo_ID, Competicion_ID) VALUES (?, ?)"
             try: cursor.execute(sql_insert, (equipo_id, competicion_id))
             except pyodbc.Error as insert_err:
-                 # Simplified error message (only if not duplicate)
                  if 'duplicate key' not in str(insert_err).lower() and 'unique constraint' not in str(insert_err).lower():
                       print(f"Error insertando vínculo EquipoEnComp ({equipo_id}-{competicion_id}): {insert_err}")
             except Exception as other_insert_err:
-                 # Simplified error message
+
                  print(f"Error (no SQL) insertando vínculo EquipoEnComp ({equipo_id}-{competicion_id}): {other_insert_err}")
     except Exception as general_e:
-        # Simplified error message
         print(f"Error vinculando equipo-competición ({equipo_id}-{competicion_id}): {general_e}")
 
 
 def obtener_resultados():
     scraper_url = "http://127.0.0.1:5000/results"
     try:
-        print(f"Contactando scraper: {scraper_url}...") # Simplified
+        print(f"Contactando scraper: {scraper_url}...")
         response = requests.get(scraper_url, timeout=300)
         response.raise_for_status()
         resultados_json = response.json()
         if not isinstance(resultados_json, list):
-             print(f"Error: Scraper no devolvió una lista JSON.") # Simplified
+             print(f"Error: Scraper no devolvió una lista JSON.")
              return None
-        print(f"Éxito scraper: {len(resultados_json)} resultados.") # Simplified
+        print(f"Éxito scraper: {len(resultados_json)} resultados.")
         return resultados_json
     except requests.exceptions.Timeout: print(f"Error: Timeout conectando al scraper."); return None
     except requests.exceptions.RequestException as e: print(f"Error: Conexión scraper: {e}"); return None
@@ -142,7 +134,7 @@ def agregar_partido(resultados_json):
     try:
         connection = pyodbc.connect(connection_string, autocommit=False)
         with connection.cursor() as cursor:
-            print("Iniciando proceso BD...") # Simplified
+            print("Iniciando proceso BD...")
             partidos_procesados, partidos_insertados, partidos_actualizados = 0, 0, 0
 
             for resultado in resultados_json:
@@ -164,7 +156,7 @@ def agregar_partido(resultados_json):
                     estadio_id = obtener_o_crear_id_estadio(cursor, nombre_estadio)
 
                     if competicion_id is None or equipo_local_id is None or equipo_visitante_id is None:
-                        # Simplified message
+
                         print(f"Saltando partido (IDs inválidos): {nombre_local} vs {nombre_visitante}")
                         continue
 
@@ -175,11 +167,10 @@ def agregar_partido(resultados_json):
                         goles_local_int = 0 if goles_local_str == '-' else int(goles_local_str)
                         goles_visit_int = 0 if goles_visitante_str == '-' else int(goles_visitante_str)
                     except (ValueError, TypeError):
-                         print(f"Error datos goles para {nombre_local}. Usando 0.") # Simplified
+                         print(f"Error datos goles para {nombre_local}. Usando 0.")
                          goles_local_int, goles_visit_int = 0, 0
                     estado_actualizado = estandarizar_estado_partido(time_raw)
 
-                    # Removed print statements here for brevity
 
                     sql_find_partido = """
                                        SELECT Partido_ID, Estado, ResultadoLocal, ResultadoVisitante
@@ -221,7 +212,6 @@ def agregar_partido(resultados_json):
                                 if ganador_id and perdedor_id:
                                     cursor.execute("UPDATE Equipo SET PartidosGanados = PartidosGanados + 1 WHERE Equipo_ID = ?", ganador_id)
                                     cursor.execute("UPDATE Equipo SET PartidosPerdidos = PartidosPerdidos + 1 WHERE Equipo_ID = ?", perdedor_id)
-                        # else: # No changes case removed
 
                     else:
                          sql_check_finished = "SELECT 1 FROM Partido WHERE EquipoLocal_ID = ? AND EquipoVisitante_ID = ? AND Competicion_ID = ? AND Estado = 'finalizado'"
@@ -232,31 +222,25 @@ def agregar_partido(resultados_json):
                             datos_partido = (estado_actualizado, goles_local_int, goles_visit_int, competicion_id, estadio_id, equipo_local_id, equipo_visitante_id)
                             cursor.execute(sql_insert, datos_partido)
                             partidos_insertados += 1
-                         # else: # Skipping finished case removed
 
                     partidos_procesados += 1
 
                  except (TypeError, ValueError) as data_err:
-                     # Simplified error message
                      print(f"Error datos procesando {resultado.get('local', 'Desconocido')}: {data_err}")
                  except pyodbc.Error as db_err:
-                     # Simplified error message
                      print(f"Error BD procesando {resultado.get('local', 'Desconocido')}: {db_err}")
                  except Exception as loop_err:
-                     # Simplified error message
                      print(f"Error inesperado procesando {resultado.get('local', 'Desconocido')}: {loop_err}")
 
-            print(f"\nProceso finalizado. Procesados:{partidos_procesados}, Insertados:{partidos_insertados}, Actualizados:{partidos_actualizados}.") # Simplified
+            print(f"\nProceso finalizado. Procesados:{partidos_procesados}, Insertados:{partidos_insertados}, Actualizados:{partidos_actualizados}.")
             connection.commit()
 
     except pyodbc.Error as e:
-        # Simplified error message
         print(f"Error Conexión BD: {e}")
         if connection:
             try: connection.rollback();
             except pyodbc.Error: pass
     except Exception as general_e:
-        # Simplified error message
         print(f"Error general: {general_e}")
         if connection:
             try: connection.rollback();
@@ -264,7 +248,7 @@ def agregar_partido(resultados_json):
     finally:
          if connection:
              connection.close()
-             print("Conexión BD cerrada.") # Simplified
+             print("Conexión BD cerrada.")
 
 def estandarizar_estado_partido(tiempo_crudo):
     if not tiempo_crudo: return 'pendiente'
@@ -283,4 +267,4 @@ if __name__ == "__main__":
     if datos:
         agregar_partido(datos)
     else:
-        print("Finalizando: No se obtuvieron datos del scraper.") # Simplified
+        print("Finalizando: No se obtuvieron datos del scraper.")
