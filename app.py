@@ -11,7 +11,6 @@ def hello_world():
 
 @app.route('/results')
 def scrape_data():
-    partidos_con_links = []
     resultados_finales = []
 
     try:
@@ -44,37 +43,15 @@ def scrape_data():
                     if len(scores_elements) == 2:
                         goles_local = scores_elements[0].text_content().strip()
                         goles_visitante = scores_elements[1].text_content().strip()
-                    link_partido = partido.get_attribute('href')
-                    url_completa = f"https://www.promiedos.com.ar{link_partido}"
 
-                    partidos_con_links.append({
+                    resultados_finales.append({
                         "liga": league_name,
                         "local": equipo_local_el.text_content().strip() if equipo_local_el else 'N/A',
                         "visitante": equipo_visitante_el.text_content().strip() if equipo_visitante_el else 'N/A',
                         "goles_local": goles_local,
                         "goles_visitante": goles_visitante,
                         "tiempo": time_el.text_content().strip() if time_el else 'N/A',
-                        "url_partido": url_completa
                     })
-
-            selector_xpath_estadio = "//div[contains(@class, 'info-list_left') and (contains(., 'Estadio') or contains(., 'Estádio'))]/following-sibling::div[contains(@class, 'info-list_right')]"
-
-            for i, partido_data in enumerate(partidos_con_links):
-                nombre_estadio = "N/A"
-
-                try:
-                    page.goto(partido_data['url_partido'], wait_until="networkidle")
-                    estadio_el = page.query_selector(selector_xpath_estadio)
-
-                    if estadio_el:
-                        nombre_estadio = estadio_el.text_content().strip()
-
-                    partido_data['estadio'] = nombre_estadio
-
-                except Exception as e_partido:
-                    partido_data['estadio'] = 'N/A (Error Nav/Scrape)'
-
-                resultados_finales.append(partido_data)
 
             browser.close()
             return jsonify(resultados_finales)

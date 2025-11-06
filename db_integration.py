@@ -1,9 +1,7 @@
 import pyodbc
 import requests
-from datetime import datetime
 
 MAX_NAME_LENGTH = 50
-DEFAULT_STADIUM_ID = 1
 DEFAULT_DEPORTE_ID = 1
 
 def obtener_o_crear_id_equipo(cursor, nombre_equipo, pais_default="N/A"):
@@ -15,7 +13,7 @@ def obtener_o_crear_id_equipo(cursor, nombre_equipo, pais_default="N/A"):
         row = cursor.fetchone()
         if row: return row[0]
         else:
-            sql_insert = "INSERT INTO Equipo (Nombre, País, PartidosGanados, PartidosPerdidos) VALUES (?, ?, 0, 0)"
+            sql_insert = "INSERT INTO Equipo (Nombre,PartidosGanados, PartidosPerdidos) VALUES (?, 0, 0)"
             try: cursor.execute(sql_insert, (nombre_equipo, pais_default))
             except pyodbc.Error as insert_err:
                 print(f"Error insertando equipo '{nombre_equipo}': {insert_err}")
@@ -61,35 +59,6 @@ def obtener_o_crear_competicion_id(cursor, nombre_competicion, id_deporte_defaul
     except Exception as e:
         print(f"Error procesando competición '{nombre_competicion}': {e}"); return None
 
-
-def obtener_o_crear_id_estadio(cursor, nombre_estadio, ciudad_default="N/A", pais_default="N/A"):
-    if not nombre_estadio or nombre_estadio.strip().upper() == "N/A" or nombre_estadio.strip() == '': return DEFAULT_STADIUM_ID
-    if len(nombre_estadio) > MAX_NAME_LENGTH: nombre_estadio = nombre_estadio[:MAX_NAME_LENGTH]
-    try:
-        sql_select = "SELECT Estadio_ID FROM Estadio WHERE Nombre = ?"
-        cursor.execute(sql_select, nombre_estadio)
-        row = cursor.fetchone()
-        if row: return row[0]
-        else:
-            print(f"Creando estadio: '{nombre_estadio}'...")
-            sql_insert = "INSERT INTO Estadio (Nombre, Ciudad, País) VALUES (?, ?, ?)"
-            try: cursor.execute(sql_insert, (nombre_estadio, ciudad_default, pais_default))
-            except pyodbc.Error as insert_err:
-                 print(f"Error insertando estadio '{nombre_estadio}': {insert_err}. Usando ID default.")
-                 cursor.execute(sql_select, nombre_estadio); row_check = cursor.fetchone()
-                 if row_check: return row_check[0]
-                 return DEFAULT_STADIUM_ID
-            cursor.execute("SELECT SCOPE_IDENTITY()")
-            nuevo_id_row = cursor.fetchone()
-            if nuevo_id_row and nuevo_id_row[0] is not None:
-                return int(nuevo_id_row[0])
-            else:
-                 cursor.execute(sql_select, nombre_estadio); row_check = cursor.fetchone()
-                 if row_check: return row_check[0]
-                 return DEFAULT_STADIUM_ID
-    except Exception as e:
-        print(f"Error procesando estadio '{nombre_estadio}': {e}. Usando ID default."); return DEFAULT_STADIUM_ID
-
 def agregar_equipo_a_competicion_si_no_existe(cursor, equipo_id, competicion_id):
     if not equipo_id or not competicion_id: return
     try:
@@ -103,7 +72,6 @@ def agregar_equipo_a_competicion_si_no_existe(cursor, equipo_id, competicion_id)
                  if 'duplicate key' not in str(insert_err).lower() and 'unique constraint' not in str(insert_err).lower():
                       print(f"Error insertando vínculo EquipoEnComp ({equipo_id}-{competicion_id}): {insert_err}")
             except Exception as other_insert_err:
-
                  print(f"Error (no SQL) insertando vínculo EquipoEnComp ({equipo_id}-{competicion_id}): {other_insert_err}")
     except Exception as general_e:
         print(f"Error vinculando equipo-competición ({equipo_id}-{competicion_id}): {general_e}")
@@ -127,7 +95,7 @@ def obtener_resultados():
 
 
 def agregar_partido(resultados_json):
-    server = r'DESKTOP-BP55FHE\SQLEXPRESS'
+    server = input("Server: ")
     database = "BetNova"
     connection_string = f'DRIVER={{SQL Server}};SERVER={server};DATABASE={database};Trusted_Connection=yes;'
     connection = None
@@ -146,17 +114,14 @@ def agregar_partido(resultados_json):
                     goles_visitante_str = resultado.get("goles_visitante")
                     nombre_competicion = resultado.get("liga")
                     time_raw = resultado.get("tiempo")
-                    nombre_estadio = resultado.get("estadio")
                     if not all([nombre_local, nombre_visitante, nombre_competicion]): continue
                     if goles_local_str is None or goles_visitante_str is None: continue
 
                     competicion_id = obtener_o_crear_competicion_id(cursor, nombre_competicion)
                     equipo_local_id = obtener_o_crear_id_equipo(cursor, nombre_local)
                     equipo_visitante_id = obtener_o_crear_id_equipo(cursor, nombre_visitante)
-                    estadio_id = obtener_o_crear_id_estadio(cursor, nombre_estadio)
 
                     if competicion_id is None or equipo_local_id is None or equipo_visitante_id is None:
-
                         print(f"Saltando partido (IDs inválidos): {nombre_local} vs {nombre_visitante}")
                         continue
 
@@ -218,15 +183,15 @@ def agregar_partido(resultados_json):
                          cursor.execute(sql_check_finished, (equipo_local_id, equipo_visitante_id, competicion_id))
                          ya_finalizado = cursor.fetchone()
                          if not ya_finalizado:
-                            sql_insert = "INSERT INTO Partido (Estado, ResultadoLocal, ResultadoVisitante, Fecha, Competicion_ID, Estadio_ID, EquipoLocal_ID, EquipoVisitante_ID, FechaFinEstimada) VALUES (?, ?, ?, GETDATE(), ?, ?, ?, ?, NULL)"
-                            datos_partido = (estado_actualizado, goles_local_int, goles_visit_int, competicion_id, estadio_id, equipo_local_id, equipo_visitante_id)
+                            sql_insert = "INSERT INTO Partido (Estado, ResultadoLocal, ResultadoVisitante, Fecha, Competicion_ID, EquipoLocal_ID, EquipoVisitante_ID) VALUES (?, ?, ?, GETDATE(), ?, ?, ?)"
+                            datos_partido = (estado_actualizado, goles_local_int, goles_visit_int, competicion_id, equipo_local_id, equipo_visitante_id)
                             cursor.execute(sql_insert, datos_partido)
                             partidos_insertados += 1
 
                     partidos_procesados += 1
 
                  except (TypeError, ValueError) as data_err:
-                     print(f"Error datos procesando {resultado.get('local', 'Desconocido')}: {data_err}")
+                       print(f"Error datos procesando {resultado.get('local', 'Desconocido')}: {data_err}")
                  except pyodbc.Error as db_err:
                      print(f"Error BD procesando {resultado.get('local', 'Desconocido')}: {db_err}")
                  except Exception as loop_err:
@@ -254,13 +219,13 @@ def estandarizar_estado_partido(tiempo_crudo):
     if not tiempo_crudo: return 'pendiente'
     estado = str(tiempo_crudo).lower().strip()
     if estado == "final":
-        return 'finalizado'
+        return 3 #Finalizado
     elif estado[2:3] == ":":
-        return 'pendiente'
+        return 0 #Pendiente
     elif estado == "e":
-        return "entretiempo"
+        return 2 #Entretiempo
     else:
-        return "jugando"
+        return 1 #jugando
 
 if __name__ == "__main__":
     datos = obtener_resultados()
