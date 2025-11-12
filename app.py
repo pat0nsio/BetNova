@@ -18,7 +18,7 @@ def scrape_data():
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
 
-            page.goto("https://www.promiedos.com.ar", wait_until="domcontentloaded")
+            page.goto("https://www.promiedos.com.ar/", wait_until="domcontentloaded")
             page.wait_for_selector(
                 'div[class^="match-info_itemevent__"]', state='visible', timeout=10000)
             league_containers = page.query_selector_all(

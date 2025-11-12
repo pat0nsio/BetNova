@@ -4,6 +4,7 @@ import requests
 MAX_NAME_LENGTH = 50
 DEFAULT_DEPORTE_ID = 1
 
+
 def obtener_o_crear_id_equipo(cursor, nombre_equipo, pais_default="N/A"):
     if not nombre_equipo or not nombre_equipo.strip(): return None
     if len(nombre_equipo) > MAX_NAME_LENGTH: nombre_equipo = nombre_equipo[:MAX_NAME_LENGTH]
@@ -11,25 +12,34 @@ def obtener_o_crear_id_equipo(cursor, nombre_equipo, pais_default="N/A"):
         sql_select = "SELECT Equipo_ID FROM Equipo WHERE Nombre = ?"
         cursor.execute(sql_select, nombre_equipo)
         row = cursor.fetchone()
-        if row: return row[0]
+        if row:
+            return row[0]
         else:
-            sql_insert = "INSERT INTO Equipo (Nombre,PartidosGanados, PartidosPerdidos) VALUES (?, 0, 0)"
-            try: cursor.execute(sql_insert, (nombre_equipo, pais_default))
+            # SQL query expects 1 parameter for 'Nombre'
+            sql_insert = "INSERT INTO Equipo (Nombre, PartidosGanados, PartidosPerdidos) VALUES (?, 0, 0)"
+
+            try:
+                # FIXED: Only pass 'nombre_equipo'. Removed 'pais_default'.
+                cursor.execute(sql_insert, (nombre_equipo,))
             except pyodbc.Error as insert_err:
                 print(f"Error insertando equipo '{nombre_equipo}': {insert_err}")
-                cursor.execute(sql_select, nombre_equipo); row_check = cursor.fetchone()
+                cursor.execute(sql_select, nombre_equipo);
+                row_check = cursor.fetchone()
                 if row_check: return row_check[0]
                 return None
+
             cursor.execute("SELECT SCOPE_IDENTITY()")
             nuevo_id_row = cursor.fetchone()
             if nuevo_id_row and nuevo_id_row[0] is not None:
-                 return int(nuevo_id_row[0])
+                return int(nuevo_id_row[0])
             else:
-                 cursor.execute(sql_select, nombre_equipo); row_check = cursor.fetchone()
-                 if row_check: return row_check[0]
-                 return None
+                cursor.execute(sql_select, nombre_equipo);
+                row_check = cursor.fetchone()
+                if row_check: return row_check[0]
+                return None
     except Exception as e:
-        print(f"Error procesando equipo '{nombre_equipo}': {e}"); return None
+        print(f"Error procesando equipo '{nombre_equipo}': {e}");
+        return None
 
 def obtener_o_crear_competicion_id(cursor, nombre_competicion, id_deporte_default=DEFAULT_DEPORTE_ID):
     if not nombre_competicion or not nombre_competicion.strip(): return None
@@ -102,11 +112,10 @@ def agregar_partido(resultados_json):
     try:
         connection = pyodbc.connect(connection_string, autocommit=False)
         with connection.cursor() as cursor:
-            print("Iniciando proceso BD...")
-            partidos_procesados, partidos_insertados, partidos_actualizados = 0, 0, 0
+            processed, inserted, updated = 0, 0, 0
 
             for resultado in resultados_json:
-                 try:
+                try:
                     if not isinstance(resultado, dict): continue
                     nombre_local = resultado.get("local")
                     nombre_visitante = resultado.get("visitante")
@@ -114,6 +123,7 @@ def agregar_partido(resultados_json):
                     goles_visitante_str = resultado.get("goles_visitante")
                     nombre_competicion = resultado.get("liga")
                     time_raw = resultado.get("tiempo")
+
                     if not all([nombre_local, nombre_visitante, nombre_competicion]): continue
                     if goles_local_str is None or goles_visitante_str is None: continue
 
@@ -122,7 +132,6 @@ def agregar_partido(resultados_json):
                     equipo_visitante_id = obtener_o_crear_id_equipo(cursor, nombre_visitante)
 
                     if competicion_id is None or equipo_local_id is None or equipo_visitante_id is None:
-                        print(f"Saltando partido (IDs inválidos): {nombre_local} vs {nombre_visitante}")
                         continue
 
                     agregar_equipo_a_competicion_si_no_existe(cursor, equipo_local_id, competicion_id)
@@ -132,91 +141,120 @@ def agregar_partido(resultados_json):
                         goles_local_int = 0 if goles_local_str == '-' else int(goles_local_str)
                         goles_visit_int = 0 if goles_visitante_str == '-' else int(goles_visitante_str)
                     except (ValueError, TypeError):
-                         print(f"Error datos goles para {nombre_local}. Usando 0.")
-                         goles_local_int, goles_visit_int = 0, 0
+                        goles_local_int, goles_visit_int = 0, 0
+
                     estado_actualizado = estandarizar_estado_partido(time_raw)
 
-
+                    # Buscar si el partido ya existe (excluyendo los finalizados para no duplicar en búsquedas)
+                    # Nota: Si el partido ya existe y estaba finalizado, esta query no lo traerá,
+                    # por lo que caerá en el 'else', donde se valida duplicidad de finalizados.
                     sql_find_partido = """
                                        SELECT Partido_ID, Estado, ResultadoLocal, ResultadoVisitante
-                                       FROM Partido WHERE EquipoLocal_ID = ? AND EquipoVisitante_ID = ?
-                                         AND Competicion_ID = ? AND Estado != 'finalizado'
+                                       FROM Partido \
+                                       WHERE EquipoLocal_ID = ? \
+                                         AND EquipoVisitante_ID = ? \
+                                         AND Competicion_ID = ? \
+                                         AND Estado != 3 \
                                        """
                     cursor.execute(sql_find_partido, (equipo_local_id, equipo_visitante_id, competicion_id))
                     partido_existente = cursor.fetchone()
 
                     if partido_existente:
-                        partido_id_a_actualizar = partido_existente.Partido_ID
-                        estado_previo = partido_existente.Estado.strip() if partido_existente.Estado else 'desconocido'
-                        goles_local_previo = partido_existente.ResultadoLocal
-                        goles_visit_previo = partido_existente.ResultadoVisitante
+                        # --- LÓGICA DE ACTUALIZACIÓN (Partido existía y no estaba terminado) ---
+                        partido_id = partido_existente.Partido_ID
+                        estado_previo = partido_existente.Estado
+                        goles_local_prev = partido_existente.ResultadoLocal
+                        goles_visit_prev = partido_existente.ResultadoVisitante
 
                         if (estado_previo != estado_actualizado or
-                            goles_local_int != goles_local_previo or
-                            goles_visit_int != goles_visit_previo):
+                                goles_local_int != goles_local_prev or
+                                goles_visit_int != goles_visit_prev):
 
                             sql_update = """
-                                         UPDATE Partido SET Estado = ?, ResultadoLocal = ?, ResultadoVisitante = ?,
-                                         FechaFinEstimada = CASE WHEN ? = 'finalizado' THEN GETDATE() ELSE NULL END
-                                         WHERE Partido_ID = ?
+                                         UPDATE Partido \
+                                         SET Estado             = ?, \
+                                             ResultadoLocal     = ?, \
+                                             ResultadoVisitante = ?
+                                         WHERE Partido_ID = ? \
                                          """
-                            params_update = (
-                                estado_actualizado,
-                                goles_local_int,
-                                goles_visit_int,
-                                estado_actualizado,
-                                partido_id_a_actualizar
-                            )
-                            cursor.execute(sql_update, params_update)
-                            partidos_actualizados += 1
+                            params = (estado_actualizado, goles_local_int, goles_visit_int, partido_id)
+                            cursor.execute(sql_update, params)
+                            updated += 1
 
-                            if estado_actualizado == 'finalizado' and estado_previo != 'finalizado':
-                                ganador_id, perdedor_id = (None, None)
-                                if goles_local_int > goles_visit_int:   ganador_id, perdedor_id = equipo_local_id, equipo_visitante_id
-                                elif goles_visit_int > goles_local_int: ganador_id, perdedor_id = equipo_visitante_id, equipo_local_id
-                                if ganador_id and perdedor_id:
-                                    cursor.execute("UPDATE Equipo SET PartidosGanados = PartidosGanados + 1 WHERE Equipo_ID = ?", ganador_id)
-                                    cursor.execute("UPDATE Equipo SET PartidosPerdidos = PartidosPerdidos + 1 WHERE Equipo_ID = ?", perdedor_id)
+                            # Si el partido acaba de finalizar en esta actualización
+                            if estado_actualizado == 3 and estado_previo != 3:
+                                win_id, lose_id = (None, None)
+                                if goles_local_int > goles_visit_int:
+                                    win_id, lose_id = equipo_local_id, equipo_visitante_id
+                                elif goles_visit_int > goles_local_int:
+                                    win_id, lose_id = equipo_visitante_id, equipo_local_id
 
+                                if win_id and lose_id:
+                                    cursor.execute(
+                                        "UPDATE Equipo SET PartidosGanados = PartidosGanados + 1 WHERE Equipo_ID = ?",
+                                        win_id)
+                                    cursor.execute(
+                                        "UPDATE Equipo SET PartidosPerdidos = PartidosPerdidos + 1 WHERE Equipo_ID = ?",
+                                        lose_id)
                     else:
-                         sql_check_finished = "SELECT 1 FROM Partido WHERE EquipoLocal_ID = ? AND EquipoVisitante_ID = ? AND Competicion_ID = ? AND Estado = 'finalizado'"
-                         cursor.execute(sql_check_finished, (equipo_local_id, equipo_visitante_id, competicion_id))
-                         ya_finalizado = cursor.fetchone()
-                         if not ya_finalizado:
-                            sql_insert = "INSERT INTO Partido (Estado, ResultadoLocal, ResultadoVisitante, Fecha, Competicion_ID, EquipoLocal_ID, EquipoVisitante_ID) VALUES (?, ?, ?, GETDATE(), ?, ?, ?)"
-                            datos_partido = (estado_actualizado, goles_local_int, goles_visit_int, competicion_id, equipo_local_id, equipo_visitante_id)
-                            cursor.execute(sql_insert, datos_partido)
-                            partidos_insertados += 1
+                        # --- LÓGICA DE INSERCIÓN (Partido nuevo) ---
 
-                    partidos_procesados += 1
+                        # Verificar si ya existe finalizado para no duplicar datos históricos
+                        sql_check_fin = "SELECT 1 FROM Partido WHERE EquipoLocal_ID = ? AND EquipoVisitante_ID = ? AND Competicion_ID = ? AND Estado = 3"
+                        cursor.execute(sql_check_fin, (equipo_local_id, equipo_visitante_id, competicion_id))
 
-                 except (TypeError, ValueError) as data_err:
-                       print(f"Error datos procesando {resultado.get('local', 'Desconocido')}: {data_err}")
-                 except pyodbc.Error as db_err:
-                     print(f"Error BD procesando {resultado.get('local', 'Desconocido')}: {db_err}")
-                 except Exception as loop_err:
-                     print(f"Error inesperado procesando {resultado.get('local', 'Desconocido')}: {loop_err}")
+                        if not cursor.fetchone():
+                            sql_ins = """
+                                      INSERT INTO Partido (Estado, ResultadoLocal, ResultadoVisitante, Fecha, \
+                                                           Competicion_ID, EquipoLocal_ID, EquipoVisitante_ID)
+                                      VALUES (?, ?, ?, GETDATE(), ?, ?, ?) \
+                                      """
+                            params = (estado_actualizado, goles_local_int, goles_visit_int, competicion_id,
+                                      equipo_local_id, equipo_visitante_id)
+                            cursor.execute(sql_ins, params)
+                            inserted += 1
 
-            print(f"\nProceso finalizado. Procesados:{partidos_procesados}, Insertados:{partidos_insertados}, Actualizados:{partidos_actualizados}.")
+                            # --- NUEVA FUNCIONALIDAD AQUÍ ---
+                            # Si insertamos un partido que YA viene finalizado (Estado 3),
+                            # actualizamos las estadísticas de los equipos inmediatamente.
+                            if estado_actualizado == 3:
+                                win_id, lose_id = (None, None)
+                                if goles_local_int > goles_visit_int:
+                                    win_id, lose_id = equipo_local_id, equipo_visitante_id
+                                elif goles_visit_int > goles_local_int:
+                                    win_id, lose_id = equipo_visitante_id, equipo_local_id
+
+                                if win_id and lose_id:
+                                    cursor.execute(
+                                        "UPDATE Equipo SET PartidosGanados = PartidosGanados + 1 WHERE Equipo_ID = ?",
+                                        win_id)
+                                    cursor.execute(
+                                        "UPDATE Equipo SET PartidosPerdidos = PartidosPerdidos + 1 WHERE Equipo_ID = ?",
+                                        lose_id)
+                                    # print(f"  -> Estadísticas actualizadas para partido histórico insertado.")
+
+                    processed += 1
+
+                except pyodbc.Error:
+                    pass
+                except Exception:
+                    pass
+
             connection.commit()
+            print(f"Proceso finalizado. Proc:{processed}, Ins:{inserted}, Upd:{updated}.")
 
-    except pyodbc.Error as e:
-        print(f"Error Conexión BD: {e}")
+    except Exception as e:
         if connection:
-            try: connection.rollback();
-            except pyodbc.Error: pass
-    except Exception as general_e:
-        print(f"Error general: {general_e}")
-        if connection:
-            try: connection.rollback();
-            except pyodbc.Error: pass
+            try:
+                connection.rollback()
+            except:
+                pass
+        print(f"Error General: {e}")
     finally:
-         if connection:
-             connection.close()
-             print("Conexión BD cerrada.")
+        if connection: connection.close()
 
 def estandarizar_estado_partido(tiempo_crudo):
-    if not tiempo_crudo: return 'pendiente'
+    if not tiempo_crudo: return 0
     estado = str(tiempo_crudo).lower().strip()
     if estado == "final":
         return 3 #Finalizado
