@@ -5,7 +5,7 @@ MAX_NAME_LENGTH = 50
 DEFAULT_DEPORTE_ID = 1
 
 
-def obtener_o_crear_id_equipo(cursor, nombre_equipo, pais_default="N/A"):
+def obtener_o_crear_id_equipo(cursor, nombre_equipo):
     if not nombre_equipo or not nombre_equipo.strip(): return None
     if len(nombre_equipo) > MAX_NAME_LENGTH: nombre_equipo = nombre_equipo[:MAX_NAME_LENGTH]
     try:
@@ -15,11 +15,9 @@ def obtener_o_crear_id_equipo(cursor, nombre_equipo, pais_default="N/A"):
         if row:
             return row[0]
         else:
-            # SQL query expects 1 parameter for 'Nombre'
             sql_insert = "INSERT INTO Equipo (Nombre, PartidosGanados, PartidosPerdidos) VALUES (?, 0, 0)"
 
             try:
-                # FIXED: Only pass 'nombre_equipo'. Removed 'pais_default'.
                 cursor.execute(sql_insert, (nombre_equipo,))
             except pyodbc.Error as insert_err:
                 print(f"Error insertando equipo '{nombre_equipo}': {insert_err}")
@@ -145,9 +143,7 @@ def agregar_partido(resultados_json):
 
                     estado_actualizado = estandarizar_estado_partido(time_raw)
 
-                    # Buscar si el partido ya existe (excluyendo los finalizados para no duplicar en búsquedas)
-                    # Nota: Si el partido ya existe y estaba finalizado, esta query no lo traerá,
-                    # por lo que caerá en el 'else', donde se valida duplicidad de finalizados.
+
                     sql_find_partido = """
                                        SELECT Partido_ID, Estado, ResultadoLocal, ResultadoVisitante
                                        FROM Partido \
@@ -160,7 +156,6 @@ def agregar_partido(resultados_json):
                     partido_existente = cursor.fetchone()
 
                     if partido_existente:
-                        # --- LÓGICA DE ACTUALIZACIÓN (Partido existía y no estaba terminado) ---
                         partido_id = partido_existente.Partido_ID
                         estado_previo = partido_existente.Estado
                         goles_local_prev = partido_existente.ResultadoLocal
@@ -181,7 +176,6 @@ def agregar_partido(resultados_json):
                             cursor.execute(sql_update, params)
                             updated += 1
 
-                            # Si el partido acaba de finalizar en esta actualización
                             if estado_actualizado == 3 and estado_previo != 3:
                                 win_id, lose_id = (None, None)
                                 if goles_local_int > goles_visit_int:
@@ -197,9 +191,7 @@ def agregar_partido(resultados_json):
                                         "UPDATE Equipo SET PartidosPerdidos = PartidosPerdidos + 1 WHERE Equipo_ID = ?",
                                         lose_id)
                     else:
-                        # --- LÓGICA DE INSERCIÓN (Partido nuevo) ---
 
-                        # Verificar si ya existe finalizado para no duplicar datos históricos
                         sql_check_fin = "SELECT 1 FROM Partido WHERE EquipoLocal_ID = ? AND EquipoVisitante_ID = ? AND Competicion_ID = ? AND Estado = 3"
                         cursor.execute(sql_check_fin, (equipo_local_id, equipo_visitante_id, competicion_id))
 
@@ -214,9 +206,7 @@ def agregar_partido(resultados_json):
                             cursor.execute(sql_ins, params)
                             inserted += 1
 
-                            # --- NUEVA FUNCIONALIDAD AQUÍ ---
-                            # Si insertamos un partido que YA viene finalizado (Estado 3),
-                            # actualizamos las estadísticas de los equipos inmediatamente.
+
                             if estado_actualizado == 3:
                                 win_id, lose_id = (None, None)
                                 if goles_local_int > goles_visit_int:
@@ -231,7 +221,6 @@ def agregar_partido(resultados_json):
                                     cursor.execute(
                                         "UPDATE Equipo SET PartidosPerdidos = PartidosPerdidos + 1 WHERE Equipo_ID = ?",
                                         lose_id)
-                                    # print(f"  -> Estadísticas actualizadas para partido histórico insertado.")
 
                     processed += 1
 
