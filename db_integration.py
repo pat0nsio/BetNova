@@ -199,7 +199,7 @@ def agregar_partido(resultados_json):
                             sql_ins = """
                                       INSERT INTO Partido (Estado, ResultadoLocal, ResultadoVisitante, Fecha, \
                                                            Competicion_ID, EquipoLocal_ID, EquipoVisitante_ID)
-                                      VALUES (?, ?, ?, GETDATE(), ?, ?, ?) \
+                                      VALUES (?, ?, ?, CAST(GETDATE() AS DATE), ?, ?, ?) \
                                       """
                             params = (estado_actualizado, goles_local_int, goles_visit_int, competicion_id,
                                       equipo_local_id, equipo_visitante_id)
