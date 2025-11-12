@@ -15,7 +15,7 @@ def obtener_o_crear_id_equipo(cursor, nombre_equipo):
         if row:
             return row[0]
         else:
-            sql_insert = "INSERT INTO Equipo (Nombre, PartidosGanados, PartidosPerdidos) VALUES (?, 0, 0)"
+            sql_insert = "INSERT INTO Equipo (Nombre) VALUES (?)"
 
             try:
                 cursor.execute(sql_insert, (nombre_equipo,))
@@ -143,7 +143,6 @@ def agregar_partido(resultados_json):
 
                     estado_actualizado = estandarizar_estado_partido(time_raw)
 
-
                     sql_find_partido = """
                                        SELECT Partido_ID, Estado, ResultadoLocal, ResultadoVisitante
                                        FROM Partido \
@@ -164,7 +163,6 @@ def agregar_partido(resultados_json):
                         if (estado_previo != estado_actualizado or
                                 goles_local_int != goles_local_prev or
                                 goles_visit_int != goles_visit_prev):
-
                             sql_update = """
                                          UPDATE Partido \
                                          SET Estado             = ?, \
@@ -176,22 +174,7 @@ def agregar_partido(resultados_json):
                             cursor.execute(sql_update, params)
                             updated += 1
 
-                            if estado_actualizado == 3 and estado_previo != 3:
-                                win_id, lose_id = (None, None)
-                                if goles_local_int > goles_visit_int:
-                                    win_id, lose_id = equipo_local_id, equipo_visitante_id
-                                elif goles_visit_int > goles_local_int:
-                                    win_id, lose_id = equipo_visitante_id, equipo_local_id
-
-                                if win_id and lose_id:
-                                    cursor.execute(
-                                        "UPDATE Equipo SET PartidosGanados = PartidosGanados + 1 WHERE Equipo_ID = ?",
-                                        win_id)
-                                    cursor.execute(
-                                        "UPDATE Equipo SET PartidosPerdidos = PartidosPerdidos + 1 WHERE Equipo_ID = ?",
-                                        lose_id)
                     else:
-
                         sql_check_fin = "SELECT 1 FROM Partido WHERE EquipoLocal_ID = ? AND EquipoVisitante_ID = ? AND Competicion_ID = ? AND Estado = 3"
                         cursor.execute(sql_check_fin, (equipo_local_id, equipo_visitante_id, competicion_id))
 
@@ -205,22 +188,6 @@ def agregar_partido(resultados_json):
                                       equipo_local_id, equipo_visitante_id)
                             cursor.execute(sql_ins, params)
                             inserted += 1
-
-
-                            if estado_actualizado == 3:
-                                win_id, lose_id = (None, None)
-                                if goles_local_int > goles_visit_int:
-                                    win_id, lose_id = equipo_local_id, equipo_visitante_id
-                                elif goles_visit_int > goles_local_int:
-                                    win_id, lose_id = equipo_visitante_id, equipo_local_id
-
-                                if win_id and lose_id:
-                                    cursor.execute(
-                                        "UPDATE Equipo SET PartidosGanados = PartidosGanados + 1 WHERE Equipo_ID = ?",
-                                        win_id)
-                                    cursor.execute(
-                                        "UPDATE Equipo SET PartidosPerdidos = PartidosPerdidos + 1 WHERE Equipo_ID = ?",
-                                        lose_id)
 
                     processed += 1
 
