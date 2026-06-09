@@ -1,0 +1,11 @@
+# Backend del scraper Flask (app.py)
+flask==3.1.3
+flask-cors==6.0.5
+playwright==1.60.0
+requests==2.34.2
+
+# Integración con SQL Server (db_integration.py)
+pyodbc
+
+# Después de instalar, descargá el navegador para Playwright:
+#   playwright install chromium
