@@ -163,9 +163,7 @@ BetNova/
 
 ---
 
-## License
 
-Private — not licensed for public distribution.
 
 ---
 
